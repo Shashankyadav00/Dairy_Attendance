@@ -11,17 +11,18 @@ import java.util.Optional;
 public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
     /**
-     * ✅ Fetch all customers belonging to a particular shift.
-     * Example: Morning / Night
+     * Fetch all customers belonging to a particular shift.
      */
     List<Customer> findByShift(String shift);
 
     /**
-     * ✅ Fetch a customer by full name OR nickname (case-insensitive).
-     * Used in overview & PDF report to find rate per litre.
-     *
-     * Spring Data JPA auto-generates:
-     * SELECT * FROM customers WHERE LOWER(full_name) = LOWER(?) OR LOWER(nickname) = LOWER(?) LIMIT 1;
+     * Fetch a customer by full name OR nickname.
      */
     Optional<Customer> findByFullNameOrNickname(String fullName, String nickname);
+
+    /**
+     * NEW: Fetch customers belonging to a specific user.
+     * This ensures each user sees ONLY their own customers.
+     */
+    List<Customer> findByUserId(Long userId);
 }

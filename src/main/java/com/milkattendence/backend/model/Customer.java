@@ -15,13 +15,17 @@ public class Customer {
     private String shift;
     private double pricePerLitre;
 
+    // ADD THIS FIELD 👇
+    private Long userId;
+
     public Customer() {}
 
-    public Customer(String fullName, String nickname, String shift, double pricePerLitre) {
+    public Customer(String fullName, String nickname, String shift, double pricePerLitre, Long userId) {
         this.fullName = fullName;
         this.nickname = nickname;
         this.shift = shift;
         this.pricePerLitre = pricePerLitre;
+        this.userId = userId;
     }
 
     // Getters and Setters
@@ -44,4 +48,8 @@ public class Customer {
     public double getPricePerLitre() { return pricePerLitre; }
 
     public void setPricePerLitre(double pricePerLitre) { this.pricePerLitre = pricePerLitre; }
+
+    public Long getUserId() { return userId; }
+
+    public void setUserId(Long userId) { this.userId = userId; }
 }
