@@ -22,7 +22,6 @@ public class AuthController {
     private final UserRepository userRepository;
     private final JavaMailSender mailSender;
 
-    // ❗ FIXED — removed colon so Spring loads actual email
     @Value("${spring.mail.username}")
     private String senderEmail;
 
@@ -32,40 +31,66 @@ public class AuthController {
     }
 
     // ==========================================================
-    // 🔵 LOGIN
+    // 🔵 LOGIN — now returns userId
     // ==========================================================
     @PostMapping("/login")
-    public String login(@RequestBody User user) {
-        Optional<User> found = userRepository.findByEmail(user.getEmail());
-        if (found.isEmpty()) {
-            return "User not found. Please register.";
+    public Map<String, Object> login(@RequestBody User requestUser) {
+
+        Optional<User> foundOpt = userRepository.findByEmail(requestUser.getEmail());
+
+        if (foundOpt.isEmpty()) {
+            return Map.of(
+                "success", false,
+                "message", "User not found. Please register."
+            );
         }
-        if (!found.get().getPassword().equals(user.getPassword())) {
-            return "Invalid password.";
+
+        User found = foundOpt.get();
+
+        if (!found.getPassword().equals(requestUser.getPassword())) {
+            return Map.of(
+                "success", false,
+                "message", "Invalid password."
+            );
         }
-        return "Login successful!";
+
+        // 🔥 RETURN USER ID HERE
+        return Map.of(
+            "success", true,
+            "message", "Login successful!",
+            "userId", found.getId()
+        );
     }
 
     // ==========================================================
     // 🟢 REGISTER
     // ==========================================================
     @PostMapping("/register")
-    public String register(@RequestBody User user) {
+    public Map<String, Object> register(@RequestBody User user) {
+
         if (userRepository.findByEmail(user.getEmail()).isPresent()) {
-            return "User already exists.";
+            return Map.of(
+                "success", false,
+                "message", "User already exists."
+            );
         }
+
         userRepository.save(user);
-        return "Registration successful!";
+
+        return Map.of(
+            "success", true,
+            "message", "Registration successful!"
+        );
     }
 
     // ==========================================================
     // 🟣 FORGOT PASSWORD — SEND OTP
     // ==========================================================
 
-    // Temporary store for OTPs
     private static class OtpInfo {
         String otp;
         LocalDateTime expiresAt;
+
         OtpInfo(String otp, LocalDateTime expiresAt) {
             this.otp = otp;
             this.expiresAt = expiresAt;
@@ -85,10 +110,8 @@ public class AuthController {
         }
 
         try {
-            // Generate 6-digit OTP
             String otp = String.valueOf(new Random().nextInt(900000) + 100000);
 
-            // Save OTP for 10 minutes
             otpStore.put(email, new OtpInfo(otp, LocalDateTime.now().plusMinutes(10)));
 
             sendOtpEmail(email, otp);
@@ -120,7 +143,7 @@ public class AuthController {
     }
 
     // ==========================================================
-    // 🟠 RESET PASSWORD (VERIFY OTP)
+    // 🟠 RESET PASSWORD — VERIFY OTP
     // ==========================================================
     @PostMapping("/reset")
     public Map<String, Object> resetPassword(@RequestBody Map<String, Object> body) {
@@ -147,7 +170,6 @@ public class AuthController {
             return Map.of("success", false, "error", "Invalid OTP");
         }
 
-        // OTP valid → update password
         Optional<User> userOpt = userRepository.findByEmail(email);
         if (userOpt.isEmpty()) {
             return Map.of("success", false, "error", "User not found");
@@ -157,7 +179,6 @@ public class AuthController {
         user.setPassword(newPassword);
         userRepository.save(user);
 
-        // Remove OTP after success
         otpStore.remove(email);
 
         return Map.of("success", true, "message", "Password reset successful");

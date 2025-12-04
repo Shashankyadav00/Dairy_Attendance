@@ -21,8 +21,13 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     Optional<Customer> findByFullNameOrNickname(String fullName, String nickname);
 
     /**
-     * NEW: Fetch customers belonging to a specific user.
-     * This ensures each user sees ONLY their own customers.
+     * Fetch customers belonging to a specific user.
      */
     List<Customer> findByUserId(Long userId);
+
+    /**
+     * Fetch customers by shift AND user.
+     * Required to prevent other users from seeing each other's data.
+     */
+    List<Customer> findByShiftAndUserId(String shift, Long userId);
 }

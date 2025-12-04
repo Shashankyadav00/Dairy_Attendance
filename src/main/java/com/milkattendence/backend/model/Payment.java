@@ -6,7 +6,7 @@ import java.time.LocalDate;
 @Entity
 @Table(
     name = "payments",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"customer_name", "shift", "date"})
+    uniqueConstraints = @UniqueConstraint(columnNames = {"customer_name", "shift", "date", "user_id"})
 )
 public class Payment {
 
@@ -23,16 +23,21 @@ public class Payment {
 
     private LocalDate date;
 
+    // NEW: link payment to a specific user
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
     public Payment() {}
 
-    public Payment(String customerName, String shift, boolean paid, LocalDate date) {
+    public Payment(String customerName, String shift, boolean paid, LocalDate date, Long userId) {
         this.customerName = customerName;
         this.shift = shift;
         this.paid = paid;
         this.date = date;
+        this.userId = userId;
     }
 
-    // Getters and setters
+    // Getters / Setters
     public Long getId() { return id; }
 
     public String getCustomerName() { return customerName; }
@@ -46,4 +51,7 @@ public class Payment {
 
     public LocalDate getDate() { return date; }
     public void setDate(LocalDate date) { this.date = date; }
+
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
 }

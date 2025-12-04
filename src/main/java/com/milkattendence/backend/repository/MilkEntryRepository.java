@@ -10,10 +10,23 @@ import java.util.Optional;
 
 @Repository
 public interface MilkEntryRepository extends JpaRepository<MilkEntry, Long> {
-    List<MilkEntry> findByShiftOrderByDateDesc(String shift);
 
-    List<MilkEntry> findByShiftAndDateBetweenOrderByDateAsc(String shift, LocalDate start, LocalDate end);
+    // Fetch entries for a specific user + shift ordered by latest first (used in DayWise page)
+    List<MilkEntry> findByUserIdAndShiftOrderByDateDesc(Long userId, String shift);
 
-    // ✅ This method must be present exactly like this
-    Optional<MilkEntry> findByShiftAndDateAndCustomerName(String shift, LocalDate date, String customerName);
+    // Fetch entries for a specific user + shift + month range (used in Overview)
+    List<MilkEntry> findByUserIdAndShiftAndDateBetweenOrderByDateAsc(
+            Long userId,
+            String shift,
+            LocalDate start,
+            LocalDate end
+    );
+
+    // Find a single entry for a user by shift + date + customerName (used for quick update / reset)
+    Optional<MilkEntry> findByUserIdAndShiftAndDateAndCustomerName(
+            Long userId,
+            String shift,
+            LocalDate date,
+            String customerName
+    );
 }

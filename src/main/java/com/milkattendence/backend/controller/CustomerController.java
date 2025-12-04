@@ -18,38 +18,45 @@ public class CustomerController {
         this.customerRepository = customerRepository;
     }
 
-    /**
-     * ✅ Fetch all customers (used in Admin, Overview, PDF download, etc.)
-     * Returns a plain array so frontend can safely call customers.map(...)
-     */
+    // ============================================================
+    // ✅ Fetch customers ONLY for the logged-in user
+    // Example request: /api/customers?userId=3
+    // ============================================================
     @GetMapping
-    public List<Customer> getAllCustomers() {
-        return customerRepository.findAll();
+    public List<Customer> getAllCustomers(@RequestParam Long userId) {
+        return customerRepository.findByUserId(userId);
     }
 
-    /**
-     * ✅ Fetch customers by shift (Morning / Night)
-     * Also returns a plain list instead of a wrapped map
-     */
+    // ============================================================
+    // ✅ Fetch customers by shift for the logged-in user
+    // Example: /api/customers/morning?userId=3
+    // ============================================================
     @GetMapping("/{shift}")
-    public List<Customer> getCustomersByShift(@PathVariable String shift) {
-        return customerRepository.findByShift(shift);
+    public List<Customer> getCustomersByShift(
+            @PathVariable String shift,
+            @RequestParam Long userId
+    ) {
+        return customerRepository.findByShiftAndUserId(shift, userId);
     }
 
-    /**
-     * ✅ Add a new customer
-     */
+    // ============================================================
+    // ✅ Add customer (userId MUST be included in request body)
+    // ============================================================
     @PostMapping
     public Customer addCustomer(@RequestBody Customer customer) {
         if (customer.getFullName() == null || customer.getFullName().isBlank()) {
             throw new RuntimeException("Full name is required");
         }
+        if (customer.getUserId() == null) {
+            throw new RuntimeException("User ID is required");
+        }
+
         return customerRepository.save(customer);
     }
 
-    /**
-     * ✅ Update an existing customer
-     */
+    // ============================================================
+    // ✅ Update an existing customer (userId should NOT change)
+    // ============================================================
     @PutMapping("/{id}")
     public Customer updateCustomer(@PathVariable Long id, @RequestBody Customer updatedCustomer) {
         Optional<Customer> existing = customerRepository.findById(id);
@@ -60,15 +67,16 @@ public class CustomerController {
             c.setNickname(updatedCustomer.getNickname());
             c.setPricePerLitre(updatedCustomer.getPricePerLitre());
             c.setShift(updatedCustomer.getShift());
+
             return customerRepository.save(c);
         } else {
             throw new RuntimeException("Customer not found with ID: " + id);
         }
     }
 
-    /**
-     * ✅ Delete a customer
-     */
+    // ============================================================
+    // ✅ Delete a customer
+    // ============================================================
     @DeleteMapping("/{id}")
     public void deleteCustomer(@PathVariable Long id) {
         if (!customerRepository.existsById(id)) {

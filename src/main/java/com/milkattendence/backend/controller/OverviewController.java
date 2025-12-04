@@ -5,6 +5,7 @@ import com.milkattendence.backend.model.MilkEntry;
 import com.milkattendence.backend.repository.CustomerRepository;
 import com.milkattendence.backend.repository.MilkEntryRepository;
 import org.springframework.web.bind.annotation.*;
+
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.*;
@@ -22,136 +23,138 @@ public class OverviewController {
         this.customerRepo = customerRepo;
     }
 
-    /**
-     * ✅ GET: Monthly overview data (unchanged from your original)
-     */
+    // GET overview for specific user
     @GetMapping
     public Map<String, Object> getOverview(
             @RequestParam String shift,
             @RequestParam int month,
-            @RequestParam int year
+            @RequestParam int year,
+            @RequestParam Long userId
     ) {
         YearMonth ym = YearMonth.of(year, month);
         LocalDate start = ym.atDay(1);
         LocalDate end = ym.atEndOfMonth();
 
-        List<Customer> customers = customerRepo.findByShift(shift);
-        List<MilkEntry> entries = milkEntryRepo.findByShiftAndDateBetweenOrderByDateAsc(shift, start, end);
+        List<Customer> customers = customerRepo.findByShiftAndUserId(shift, userId);
+
+        List<MilkEntry> entries = milkEntryRepo.findByUserIdAndShiftAndDateBetweenOrderByDateAsc(
+                userId, shift, start, end
+        );
 
         int daysInMonth = ym.lengthOfMonth();
         Map<Integer, Map<Long, Map<String, Double>>> matrix = new HashMap<>();
         for (int d = 1; d <= daysInMonth; d++) matrix.put(d, new HashMap<>());
 
-        // Fill the matrix
         for (MilkEntry e : entries) {
             int day = e.getDate().getDayOfMonth();
-            Optional<Customer> maybe = customers.stream()
+
+            Optional<Customer> match = customers.stream()
                     .filter(c ->
                             (c.getFullName() != null && c.getFullName().equalsIgnoreCase(e.getCustomerName())) ||
                             (c.getNickname() != null && c.getNickname().equalsIgnoreCase(e.getCustomerName()))
                     )
                     .findFirst();
-            if (!maybe.isPresent()) continue;
 
-            Long custId = maybe.get().getId();
+            if (match.isEmpty()) continue;
+
+            Long custId = match.get().getId();
             Map<Long, Map<String, Double>> dayMap = matrix.get(day);
             Map<String, Double> cell = dayMap.getOrDefault(custId, new HashMap<>());
-            double litresPrev = cell.getOrDefault("litres", 0.0);
-            double amountPrev = cell.getOrDefault("amount", 0.0);
-            cell.put("litres", litresPrev + e.getLitres());
-            cell.put("amount", amountPrev + e.getAmount());
+
+            cell.put("litres", cell.getOrDefault("litres", 0.0) + e.getLitres());
+            cell.put("amount", cell.getOrDefault("amount", 0.0) + e.getAmount());
             dayMap.put(custId, cell);
         }
 
-        // Build customer list
-        List<Map<String, Object>> customerCols = new ArrayList<>();
+        List<Map<String, Object>> customerList = new ArrayList<>();
         for (Customer c : customers) {
             Map<String, Object> cm = new HashMap<>();
             cm.put("id", c.getId());
             cm.put("name", c.getFullName() != null ? c.getFullName() : c.getNickname());
             cm.put("pricePerLitre", c.getPricePerLitre());
-            customerCols.add(cm);
+            customerList.add(cm);
         }
 
-        // Totals
         Map<Long, Double> totalLitresPerCustomer = new HashMap<>();
         Map<Long, Double> totalAmountPerCustomer = new HashMap<>();
-        double grandTotalAmount = 0;
         Map<Integer, Double> totalPerDay = new HashMap<>();
+        double grandTotalAmount = 0;
 
         for (int d = 1; d <= daysInMonth; d++) {
             double dayTotal = 0;
-            Map<Long, Map<String, Double>> dayMap = matrix.get(d);
-            for (Map.Entry<Long, Map<String, Double>> ent : dayMap.entrySet()) {
+            for (Map.Entry<Long, Map<String, Double>> ent : matrix.get(d).entrySet()) {
                 Long cid = ent.getKey();
                 double litres = ent.getValue().getOrDefault("litres", 0.0);
                 double amount = ent.getValue().getOrDefault("amount", 0.0);
+
                 totalLitresPerCustomer.put(cid, totalLitresPerCustomer.getOrDefault(cid, 0.0) + litres);
                 totalAmountPerCustomer.put(cid, totalAmountPerCustomer.getOrDefault(cid, 0.0) + amount);
+
                 dayTotal += amount;
                 grandTotalAmount += amount;
             }
             totalPerDay.put(d, dayTotal);
         }
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("year", year);
-        result.put("month", month);
-        result.put("daysInMonth", daysInMonth);
-        result.put("customers", customerCols);
-        result.put("matrix", matrix);
-        result.put("totalLitresPerCustomer", totalLitresPerCustomer);
-        result.put("totalAmountPerCustomer", totalAmountPerCustomer);
-        result.put("totalPerDay", totalPerDay);
-        result.put("grandTotalAmount", grandTotalAmount);
+        Map<String, Object> response = new HashMap<>();
+        response.put("year", year);
+        response.put("month", month);
+        response.put("daysInMonth", daysInMonth);
+        response.put("customers", customerList);
+        response.put("matrix", matrix);
+        response.put("totalLitresPerCustomer", totalLitresPerCustomer);
+        response.put("totalAmountPerCustomer", totalAmountPerCustomer);
+        response.put("totalPerDay", totalPerDay);
+        response.put("grandTotalAmount", grandTotalAmount);
 
-        return result;
+        return response;
     }
 
-    /**
-     * ✅ POST: Add / Update / Reset entry from Overview table
-     */
+    // Add/update/reset entry for specific user
     @PostMapping("/add")
     public Map<String, Object> addOrUpdateEntry(@RequestBody MilkEntry entry) {
         Map<String, Object> response = new HashMap<>();
         try {
+            if (entry.getUserId() == null) {
+                response.put("status", "error");
+                response.put("message", "userId is required");
+                return response;
+            }
             if (entry.getCustomerName() == null || entry.getCustomerName().isEmpty()) {
                 response.put("status", "error");
                 response.put("message", "Customer name required");
                 return response;
             }
-
-            // Ensure date and shift are valid
             if (entry.getDate() == null) {
                 response.put("status", "error");
                 response.put("message", "Date required");
                 return response;
             }
 
-            // Find the matching customer for rate lookup
-            Optional<Customer> custOpt = customerRepo.findByShift(entry.getShift()).stream()
-                    .filter(c -> c.getFullName().equalsIgnoreCase(entry.getCustomerName()) ||
-                            (c.getNickname() != null && c.getNickname().equalsIgnoreCase(entry.getCustomerName())))
+            Optional<Customer> custOpt = customerRepo.findByShiftAndUserId(entry.getShift(), entry.getUserId())
+                    .stream()
+                    .filter(c ->
+                            c.getFullName().equalsIgnoreCase(entry.getCustomerName()) ||
+                                    (c.getNickname() != null && c.getNickname().equalsIgnoreCase(entry.getCustomerName()))
+                    )
                     .findFirst();
 
-            if (!custOpt.isPresent()) {
+            if (custOpt.isEmpty()) {
                 response.put("status", "error");
-                response.put("message", "Customer not found for this shift");
+                response.put("message", "Customer not found for this user");
                 return response;
             }
 
-            Customer cust = custOpt.get();
-            double rate = cust.getPricePerLitre();
+            double rate = custOpt.get().getPricePerLitre();
             double litres = entry.getLitres();
 
-            // Check if existing entry exists
-            Optional<MilkEntry> existing = milkEntryRepo.findByShiftAndDateAndCustomerName(
+            Optional<MilkEntry> existing = milkEntryRepo.findByUserIdAndShiftAndDateAndCustomerName(
+                    entry.getUserId(),
                     entry.getShift(),
                     entry.getDate(),
                     entry.getCustomerName()
             );
 
-            // ✅ Reset logic — if litres == 0 → delete existing
             if (litres == 0) {
                 existing.ifPresent(milkEntryRepo::delete);
                 response.put("status", "reset");
@@ -159,8 +162,8 @@ public class OverviewController {
                 return response;
             }
 
-            // ✅ Create or update entry
             MilkEntry saveEntry = existing.orElse(new MilkEntry());
+            saveEntry.setUserId(entry.getUserId());
             saveEntry.setCustomerName(entry.getCustomerName());
             saveEntry.setShift(entry.getShift());
             saveEntry.setDate(entry.getDate());
@@ -177,7 +180,6 @@ public class OverviewController {
             response.put("status", "error");
             response.put("message", e.getMessage());
         }
-
         return response;
     }
 }
