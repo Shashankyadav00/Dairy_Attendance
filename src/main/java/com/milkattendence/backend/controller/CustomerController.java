@@ -2,7 +2,10 @@ package com.milkattendence.backend.controller;
 
 import com.milkattendence.backend.model.Customer;
 import com.milkattendence.backend.repository.CustomerRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,70 +21,84 @@ public class CustomerController {
         this.customerRepository = customerRepository;
     }
 
-    // ============================================================
-    // ✅ Fetch customers ONLY for the logged-in user
-    // Example request: /api/customers?userId=3
-    // ============================================================
+    // ==========================================================
+    // ✅ GET Customers: Only retrieves ACTIVE customers
+    // The required userId identifies the owner. Shift is an optional filter.
+    // ==========================================================
     @GetMapping
-    public List<Customer> getAllCustomers(@RequestParam Long userId) {
-        return customerRepository.findByUserId(userId);
-    }
-
-    // ============================================================
-    // ✅ Fetch customers by shift for the logged-in user
-    // Example: /api/customers/morning?userId=3
-    // ============================================================
-    @GetMapping("/{shift}")
-    public List<Customer> getCustomersByShift(
-            @PathVariable String shift,
-            @RequestParam Long userId
+    public List<Customer> getCustomers(
+            @RequestParam Long userId,
+            @RequestParam(required = false) String shift
     ) {
-        return customerRepository.findByShiftAndUserId(shift, userId);
+        // If no shift is provided or if it's blank, fetch all active customers for the user.
+        if (shift == null || shift.isBlank()) {
+            // Calls the new method in CustomerRepository: findByUserIdAndActive(Long userId, boolean active)
+            return customerRepository.findByUserIdAndActive(userId, true);
+        }
+        
+        // If a shift is provided, fetch active customers filtered by shift.
+        // Calls the new method in CustomerRepository: findByShiftAndUserIdAndActive(String shift, Long userId, boolean active)
+        return customerRepository.findByShiftAndUserIdAndActive(shift, userId, true);
     }
 
-    // ============================================================
-    // ✅ Add customer (userId MUST be included in request body)
-    // ============================================================
+    // ==========================================================
+    // ✅ ADD Customer: Sets 'active' to true by default.
+    // ==========================================================
     @PostMapping
-    public Customer addCustomer(@RequestBody Customer customer) {
-        if (customer.getFullName() == null || customer.getFullName().isBlank()) {
-            throw new RuntimeException("Full name is required");
+    public ResponseEntity<Customer> addCustomer(@RequestBody Customer c) {
+
+        if (c.getUserId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User ID is required for a new customer.");
         }
-        if (customer.getUserId() == null) {
-            throw new RuntimeException("User ID is required");
+        if (c.getFullName() == null || c.getFullName().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Full name is required.");
         }
 
-        return customerRepository.save(customer);
+        // Set active to true on creation (Crucial to make it appear in lists)
+        c.setActive(true); 
+        Customer savedCustomer = customerRepository.save(c);
+        
+        // Return 201 Created status
+        return new ResponseEntity<>(savedCustomer, HttpStatus.CREATED);
     }
 
-    // ============================================================
-    // ✅ Update an existing customer (userId should NOT change)
-    // ============================================================
+    // ==========================================================
+    // ✅ UPDATE Customer
+    // Includes updating the active status if passed in the request body.
+    // ==========================================================
     @PutMapping("/{id}")
-    public Customer updateCustomer(@PathVariable Long id, @RequestBody Customer updatedCustomer) {
-        Optional<Customer> existing = customerRepository.findById(id);
+    public Customer updateCustomer(@PathVariable Long id, @RequestBody Customer updated) {
 
-        if (existing.isPresent()) {
-            Customer c = existing.get();
-            c.setFullName(updatedCustomer.getFullName());
-            c.setNickname(updatedCustomer.getNickname());
-            c.setPricePerLitre(updatedCustomer.getPricePerLitre());
-            c.setShift(updatedCustomer.getShift());
+        Customer c = customerRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Customer not found with ID: " + id));
 
-            return customerRepository.save(c);
-        } else {
-            throw new RuntimeException("Customer not found with ID: " + id);
-        }
+        c.setFullName(updated.getFullName());
+        c.setNickname(updated.getNickname());
+        c.setShift(updated.getShift());
+        c.setPricePerLitre(updated.getPricePerLitre());
+        // Allow updating active status
+        c.setActive(updated.isActive()); 
+
+        return customerRepository.save(c);
     }
 
-    // ============================================================
-    // ✅ Delete a customer
-    // ============================================================
+    // ==========================================================
+    // ✅ DELETE Customer (Soft Delete)
+    // Sets 'active' to false instead of physical deletion.
+    // ==========================================================
     @DeleteMapping("/{id}")
     public void deleteCustomer(@PathVariable Long id) {
-        if (!customerRepository.existsById(id)) {
-            throw new RuntimeException("Customer not found with ID: " + id);
-        }
-        customerRepository.deleteById(id);
+        
+        Customer c = customerRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Customer not found with ID: " + id));
+
+        // Perform a soft delete: set active to false
+        c.setActive(false);
+        customerRepository.save(c);
+        
+        // NOTE: If you need to physically delete, uncomment the line below and remove the two above:
+        // customerRepository.deleteById(id);
     }
 }
