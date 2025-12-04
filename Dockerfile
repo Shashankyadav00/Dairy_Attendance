@@ -1,20 +1,17 @@
-# Use Java 17 as the base image
-FROM eclipse-temurin:17
-
-# Set the working directory
+# ===== Stage 1: Build the application =====
+FROM eclipse-temurin:17 as builder
 WORKDIR /app
-
-# Copy all project files
 COPY . .
-
-# Give executable permission to mvnw (required on Linux)
 RUN chmod +x mvnw
-
-# Build the project using Maven Wrapper
 RUN ./mvnw clean package -DskipTests
 
-# Expose port 8080
+# ===== Stage 2: Run the application =====
+FROM eclipse-temurin:17
+WORKDIR /app
+
+# Copy only the built JAR from the previous stage
+COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
+
 EXPOSE 8080
 
-# Run the built JAR
-CMD ["java", "-jar", "target/backend-0.0.1-SNAPSHOT.jar"]
+CMD ["java", "-jar", "app.jar"]
